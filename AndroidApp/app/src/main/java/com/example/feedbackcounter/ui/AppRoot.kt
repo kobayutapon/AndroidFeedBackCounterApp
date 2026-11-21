@@ -88,48 +88,48 @@ fun AppRoot(
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
     val tabs = remember { listOf("アンケート", "人数") }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Feedback Counter") },
-                actions = {
-                    TextButton(onClick = { vm.syncNow() }) { Text("SYNC") }
-                    Box {
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Text("☰", fontSize = 28.sp)
-                        }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("設定") },
-                                onClick = {
-                                    menuExpanded = false
-                                    settingsOpen = true
-                                }
-                            )
-                        }
+    // MegaPad 24: Keep the app bar, tabs and content in one measured layout.
+    // Scaffold's calculated top padding can become stale when the vendor OS
+    // transiently changes system-bar insets during immersive operation.
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text("Feedback Counter") },
+            // The activity uses immersive fullscreen, so no system bar space
+            // should be added by the app bar itself.
+            windowInsets = WindowInsets(0, 0, 0, 0),
+            actions = {
+                TextButton(onClick = { vm.syncNow() }) { Text("SYNC") }
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Text("☰", fontSize = 28.sp)
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("設定") },
+                            onClick = {
+                                menuExpanded = false
+                                settingsOpen = true
+                            }
+                        )
                     }
                 }
-            )
-        }
-    ) { padding ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            TabRow(selectedTabIndex = tab) {
-                tabs.forEachIndexed { idx, title ->
-                    Tab(
-                        selected = tab == idx,
-                        onClick = { tab = idx },
-                        text = { Text(title) }
-                    )
-                }
             }
+        )
 
+        TabRow(selectedTabIndex = tab) {
+            tabs.forEachIndexed { idx, title ->
+                Tab(
+                    selected = tab == idx,
+                    onClick = { tab = idx },
+                    text = { Text(title) }
+                )
+            }
+        }
+
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when (tab) {
                 0 -> SurveyTab(
                     ui = ui,
