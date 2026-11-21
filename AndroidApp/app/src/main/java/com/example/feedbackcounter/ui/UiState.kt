@@ -11,6 +11,8 @@ data class UiState(
     val passL2R: Int = 0,
     val passR2L: Int = 0,
     val endpoint: String = "",
+    val authToken: String = "",
+    val deviceId: String = "",
     val syncMode: SyncMode = SyncMode.ON_CHANGE,
     val syncIntervalMinutes: Int = 5,
     val lastSyncStatus: String = ""

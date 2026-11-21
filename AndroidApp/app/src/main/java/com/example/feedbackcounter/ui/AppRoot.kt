@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -37,8 +38,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -97,10 +96,7 @@ fun AppRoot(
                     TextButton(onClick = { vm.syncNow() }) { Text("SYNC") }
                     Box {
                         IconButton(onClick = { menuExpanded = true }) {
-                            Icon(
-                                imageVector = androidx.compose.material.icons.Icons.Default.Menu,
-                                contentDescription = "メニューを開く"
-                            )
+                            Text("☰", fontSize = 28.sp)
                         }
                         DropdownMenu(
                             expanded = menuExpanded,
@@ -185,6 +181,7 @@ fun AppRoot(
                             ui = ui,
                             onSurveyTitleChange = vm::setSurveyTitle,
                             onEndpointChange = vm::setEndpoint,
+                            onAuthTokenChange = vm::setAuthToken,
                             onSyncModeChange = vm::setSyncMode,
                             onSyncIntervalChange = vm::setSyncIntervalMinutes,
                             onClearSurvey = vm::clearSurveyCounters,
@@ -505,6 +502,7 @@ private fun SettingsContent(
     ui: UiState,
     onSurveyTitleChange: (String) -> Unit,
     onEndpointChange: (String) -> Unit,
+    onAuthTokenChange: (String) -> Unit,
     onSyncModeChange: (SyncMode) -> Unit,
     onSyncIntervalChange: (Int) -> Unit,
     onClearSurvey: () -> Unit,
@@ -512,6 +510,7 @@ private fun SettingsContent(
 ) {
     var title by remember(ui.surveyTitle) { mutableStateOf(ui.surveyTitle) }
     var endpoint by remember(ui.endpoint) { mutableStateOf(ui.endpoint) }
+    var authToken by remember(ui.authToken) { mutableStateOf(ui.authToken) }
 
     Column(
         Modifier
@@ -539,6 +538,17 @@ private fun SettingsContent(
             ),
             singleLine = true
         )
+
+        OutlinedTextField(
+            value = authToken,
+            onValueChange = { authToken = it; onAuthTokenChange(it) },
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("端末認証トークン") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true
+        )
+        Text("端末ID: ${ui.deviceId.ifBlank { "初回送信時に生成" }}", style = MaterialTheme.typography.bodySmall)
+        Text("トークンはGAS側のScript Propertiesにも登録してください。HTTPSのみ送信します。", style = MaterialTheme.typography.bodySmall)
 
         HorizontalDivider()
         Text("Endpointへの自動送信", style = MaterialTheme.typography.titleMedium)

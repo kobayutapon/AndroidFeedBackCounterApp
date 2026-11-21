@@ -25,6 +25,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val syncMutex = Mutex()
 
     init {
+        viewModelScope.launch { prefs.ensureDeviceId() }
         // This timer is tied to the running app's ViewModel. Changing mode/period
         // cancels the previous timer; no WorkManager 15-minute minimum is imposed.
         viewModelScope.launch {
@@ -112,13 +113,16 @@ val uiState: StateFlow<UiState> = run {
             lastSyncStatus = p.lastSync,
         )
     }
-    val withMode = combine(withPeople, prefs.syncMode) { state, mode -> state.copy(syncMode = mode) }
+    val withToken = combine(withPeople, prefs.authToken) { state, token -> state.copy(authToken = token) }
+    val withDevice = combine(withToken, prefs.deviceId) { state, id -> state.copy(deviceId = id) }
+    val withMode = combine(withDevice, prefs.syncMode) { state, mode -> state.copy(syncMode = mode) }
     combine(withMode, prefs.syncIntervalMinutes) { state, minutes ->
         state.copy(syncIntervalMinutes = minutes)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState())
 }
 
 fun setEndpoint(url: String) = viewModelScope.launch { prefs.setEndpoint(url) }
+    fun setAuthToken(token: String) = viewModelScope.launch { prefs.setAuthToken(token) }
     fun setSyncMode(mode: SyncMode) = viewModelScope.launch { prefs.setSyncMode(mode) }
     fun setSyncIntervalMinutes(minutes: Int) = viewModelScope.launch { prefs.setSyncIntervalMinutes(minutes) }
 
@@ -154,24 +158,48 @@ fun setEndpoint(url: String) = viewModelScope.launch { prefs.setEndpoint(url) }
                 prefs.setLastSyncStatus("Skipped (endpoint not set)")
                 return@withLock
             }
+            if (snapshot.token.isBlank()) {
+                prefs.setLastSyncStatus("NG: 認証トークンが未設定です")
+                return@withLock
+            }
             try {
-                val result = withContext(Dispatchers.IO) {
-                    endpointClient.postCounts(
-                        endpoint = snapshot.endpoint,
-                        good = snapshot.good,
-                        normal = snapshot.normal,
-                        bad = snapshot.bad,
-                        passL2R = snapshot.passL2R,
-                        passR2L = snapshot.passR2L
-                    )
+                // First retry any persisted request with its original requestId.
+                // Then create one fresh snapshot so changes made while offline are sent.
+                val pendingBefore = prefs.readPendingPayload()
+                if (pendingBefore != null) {
+                    sendOne(snapshot.endpoint, snapshot.token, pendingBefore)
+                    prefs.acknowledgePendingPayload(pendingBefore)
                 }
-                prefs.setLastSyncStatus(result)
+                // Avoid an identical second append on a pure retry if data didn't change.
+                val current = prefs.readCountsSnapshot()
+                val shouldSendFresh = pendingBefore == null ||
+                    !sameCountsAndTitle(pendingBefore, current)
+                if (shouldSendFresh) {
+                    val fresh = prefs.getOrCreatePendingPayload()
+                    sendOne(current.endpoint, current.token, fresh)
+                    prefs.acknowledgePendingPayload(fresh)
+                }
+                prefs.setLastSyncStatus("OK (保存確認済)")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
                 prefs.setLastSyncStatus("NG: ${e.message}")
             }
         }
+    }
+
+    private suspend fun sendOne(endpoint: String, token: String, payload: String) {
+        withContext(Dispatchers.IO) { endpointClient.postCounts(endpoint, payload, token) }
+    }
+
+    private fun sameCountsAndTitle(payload: String, snapshot: AppDataStore.CountsSnapshot): Boolean {
+        val obj = org.json.JSONObject(payload)
+        return obj.optString("surveyTitle") == snapshot.surveyTitle &&
+            obj.optInt("good", -1) == snapshot.good &&
+            obj.optInt("normal", -1) == snapshot.normal &&
+            obj.optInt("bad", -1) == snapshot.bad &&
+            obj.optInt("passL2R", -1) == snapshot.passL2R &&
+            obj.optInt("passR2L", -1) == snapshot.passR2L
     }
 
     companion object {
